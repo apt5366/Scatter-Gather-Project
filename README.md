@@ -24,6 +24,6 @@ The cache implemented is an LRU (least recentl used) cache which works together 
 
 To run this file please type
 
-$ make
+> make
 
-$ ./sg_sim -v cmpsc311-assign4-workload.txt
+> ./sg_sim -v cmpsc311-assign4-workload.txt
