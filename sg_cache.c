@@ -52,11 +52,6 @@ int initSGCache( uint16_t maxElements ) {
        	hitCount=0;	
 	cache= (Cache*) malloc(maxElements*sizeof(Cache));
 	
-	if(cache == NULL){
-               logMessage( LOG_ERROR_LEVEL, "cach malloc fail" );
-               return( -1 );
-        }
-	
 // 	int x[maxElements];
 	
 	LRUqueryCount=(int*) malloc(maxElements*sizeof(int));; // so now LRUqueryCount is an int array with size of cache

@@ -16,7 +16,7 @@
 
 //
 // Defines
-#define SG_MAX_CACHE_ELEMENTS 128
+#define SG_MAX_CACHE_ELEMENTS 32
 
 // 
 // Cache functions
@@ -27,7 +27,7 @@ int initSGCache( uint16_t maxElements );
 int closeSGCache( void );
     // Close the cache of block elements, clean up remaining data
 
-char *getSGDataBlock( SG_Node_ID nde, SG_Block_ID blk );
+char * getSGDataBlock( SG_Node_ID nde, SG_Block_ID blk );
     // Get the data block from the block cache
 
 int putSGDataBlock( SG_Node_ID nde, SG_Block_ID blk, char *block );

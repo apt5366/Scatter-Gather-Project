@@ -11,7 +11,7 @@
 
 // Include Files
 #include <string.h>
-#include <stdlib.h>
+#include <assert.h>
 
 // Project Includes
 #include <sg_driver.h>
@@ -19,7 +19,6 @@
 #include <sg_cache.h>
 #include <string.h>
 
-#include <assert.h>
 // Defines
 
 //
@@ -37,22 +36,16 @@ typedef struct{
         //int isOpen=0; // to check if the file is open ::: 0 --> closed, 1 --> Open
 
         int isOpen; // to check if the file is open ::: 0 --> closed, 1 --> Open
-	int noOfBlocks;
         char* filename; //contains the path of the file
         int size; // has the size of the file
         int filePointer; //tells usthe postion where we are at
-        SG_Node_ID *nodes; // will store the malloc'd node IDs for the blocks of this file 
-        SG_Block_ID *blocks; // will store the malloc'd block IDs for the blocks of this file  
-        SG_SeqNum *blkRseq; // holds the malloc'd remote sequende numbers of each bloc of data
-	SgFHandle fileHandle;
+        SG_Node_ID nodes[20]; // will store the node IDs for the blocks of this file 
+        SG_Block_ID blocks[20]; // will store the block IDs for the blocks of this file  
+        SgFHandle fileHandle;
 }File;
 
-File* file;// this array of structs stores all the files // the indexes here correspond to the filehandles
-int noOfFiles=0;
+File file[20];// this array of structs stores all the files // the indexes here correspond to the filehandles
 
-SG_Node_ID *allNodes;
-int totalNodes=0;
-SG_SeqNum * allNodeSeq;
 int fileHandleCounter=0; // This variable will be incremented whenever a new file is created 
 
 
@@ -92,55 +85,21 @@ SgFHandle sgopen(const char *path) {
     }
 
 // FILL IN THE REST OF THE CODE	
-//
 	
- //   	int sizeOfFile;
- //   	int noOfBlocks;
-//	file= (File*) malloc(sizeOfFile*sizeof(File));	
-
-    	noOfFiles++; // new file has been made so this increments by one
-	File* temp_file; // to temporarily hold reallocated address of larger file
-	allNodes= (SG_Node_ID*) calloc(sizeof(SG_Node_ID));
-	allNodeSeq= (SG_SeqNum *)calloc(sizeof(SG_SeqNum));
-    	if(noOfFiles==1){
-		file= (File*) malloc(sizeof(File));
-	}
-	else{
-		temp_file= (File*) realloc(file,noOfFiles*sizeof(File));
-		file = temp_file; // making file point to a new larger location
-	}	
-	
-	if(file == NULL){
-		logMessage( LOG_ERROR_LEVEL, "file malloc fail" );
-                return( -1 );
-	}
-
 
     	// so the file handles go frm 0 to 19 -->> for 20 possible files
-	// for ex. For 1st file-->> curfile=0, noOfFiles=1
         int curFile=fileHandleCounter;
 
         file[curFile].isOpen=1;
         file[curFile].filename= path;
         file[curFile].size=0;
         file[curFile].filePointer=0;
-	file[curFile].noOfBlocks=0;
-//	file[curFile].nodes= (SG_Node_ID*)malloc(noOfBlocks*sizeof(SG_Node_ID));
-//	file[curFile].blocks= (SG_Block_ID*)malloc(noOfBlocks*sizeof(SG_Block_ID));
 
-/*
-
-	file[curFile].nodes= (SG_Node_ID*)malloc(sizeof(SG_Node_ID));
-	file[curFile].blocks= (SG_Block_ID*)malloc(sizeof(SG_Block_ID));
-
-	assert(file[curFile].nodes != NULL);
-	assert(file[curFile].blocks != NULL);
-	for(int i=0;i<sizeof(file[curFile].nodes);i++)
+        for(int i=0;i<20;i++)
                 file[curFile].nodes[i]=0;
 
-        for(int i=0;i<sizeof(file[curFile].blocks);i++)
+        for(int i=0;i<20;i++)
                 file[curFile].blocks[i]=0;
-*/
 
         file[curFile].fileHandle= fileHandleCounter; // assigns a new number fileHandleCounter to the current files fileHandle
 
@@ -168,8 +127,7 @@ int sgread(SgFHandle fh, char *buf, size_t len) {
 	
 	 fh--; // so that if want to access fh=1, will use file[fh=0]'th file as that is how the array works
 
-        if((fh<0)||(fh>=noOfFiles)||(file[fh].isOpen==0)) //>= noOfFiles bc fh goes from 0 to upwards whereas noFiles goes from 1 to up 
-							// incase file handle is bad or file is actually closed
+        if((fh<0)||(fh>=21)||(file[fh].isOpen==0)) // incase file handle is bad or file is actually closed
                 return (-1);
 
         if(file[fh].filePointer==file[fh].size) // means we are at end of file
@@ -191,7 +149,7 @@ int sgread(SgFHandle fh, char *buf, size_t len) {
         	SG_Node_ID loc;
         	SG_Node_ID rem=file[fh].nodes[currIndex]; // this will store the req NODE_ID
         	SG_Block_ID blkid= file[fh].blocks[currIndex]; // this will store the req BLOCK_ID
-      	 	SG_SeqNum sloc, srem= file[fh].blkRseq[currIndex]; // incrementing remote node sequence here
+      	 	SG_SeqNum sloc, srem;
         	SG_System_OP op;
         	SG_Packet_Status ret;
 
@@ -200,8 +158,8 @@ int sgread(SgFHandle fh, char *buf, size_t len) {
                 	                                rem,   // required Remote ID to retireive the desired data
                         	                      blkid,  // required Block ID to retireive the desired data
                                 	    SG_OBTAIN_BLOCK,  // Operation to receive the block to be read
-                                    	     sgLocalSeqno++,    // Sender sequence number
-                                    	    	       srem,  // Receiver sequence number
+                                    	   SG_SEQNO_UNKNOWN,    // Sender sequence number
+                                    	   SG_SEQNO_UNKNOWN,  // Receiver sequence number
                                     	   NULL, initPacket, &pktlen)) != SG_PACKT_OK ) {
                 	logMessage( LOG_ERROR_LEVEL, "READ: failed serialization of packet [%d].", ret );
                 	return( -1 );
@@ -229,14 +187,6 @@ int sgread(SgFHandle fh, char *buf, size_t len) {
                 	return( -1 );
           	}
 
-		if(srem != (file[fh].blkRseq[currIndex])){ // comparing waht we have to what we got from post
-                        logMessage( LOG_ERROR_LEVEL, "sgObtainBlock: bad remote sequence returned [%ul]", loc );
-                        return( -1 );
-                }
-                else
-                        file[fh].blkRseq[currIndex]=srem+1; // so the new rem seq number of  block has been updated by one
-
-
 		//Update Cache 
 		putSGDataBlock(file[fh].nodes[currIndex],file[fh].blocks[currIndex], read_buf);
 	 }
@@ -245,24 +195,15 @@ int sgread(SgFHandle fh, char *buf, size_t len) {
 		 //Update Cache's timestamp only, the data, nodeId,blkid  remain the same
                 putSGDataBlock(file[fh].nodes[currIndex],file[fh].blocks[currIndex], read_buf);
 	 }
-	
-	 // required block obtained
-	 //
 
 
 	// in both foll cases, we dont read the other untocuched half of the block                        
-         if((file[fh].filePointer % 1024)==0){ // we are at beginning of block -->> plain read of 1st quarter of block
-                 memcpy(&buf[0],&read_buf[0],256); // Reading the 1st quarter
-         }
-	 else if((file[fh].filePointer % 1024)==256){ // we are at end of first quarter of block -->> read of 2nd quarter of block
-		memcpy(&buf[0],&read_buf[256],256); // Reading the 2nd quarter
-	 }
-         else if((file[fh].filePointer % 1024)==512){ // we are at half point of block -->>read 3rd quarter of currBlock 
-                 memcpy(&buf[0],&read_buf[512],256); // reading the 3rd quarter           
-         }
- 	 else if((file[fh].filePointer % 1024)==768){ // we are at end of 3rd quarter of block -->>read last quarter of currBlock 
-		 memcpy(&buf[0],&read_buf[768],256); // Reading the last quarter
-	 }	 
+         if((file[fh].filePointer % 1024)==0){ // we are at beginning of block -->> plain read of 1st half of block
+                 memcpy(&buf[0],&read_buf[0],512); // Reading the 1st half
+            }
+         else if((file[fh].filePointer % 1024)==512){ // we are at half point of block -->>read 2nd half of currBlock 
+                 memcpy(&buf[0],&read_buf[512],512); // reading the 2nd half          
+            }	
 	// Have read the desired half of the block
 
         file[fh].filePointer += len;
@@ -291,68 +232,10 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                 return (-1);
 */
                                                                                         // incase the filePointer is NOT at end of file
-        if((fh<0)||(fh>=noOfFiles)||(file[fh].isOpen==0)) //>= noOfFiles bc fh goes from 0 to upwards whereas noFiles goes from 1 to up
-	       						// incase file handle is bad or file is actually closed
+        if((fh<0)||(fh>=21)||(file[fh].isOpen==0)) // incase file handle is bad or file is actually closed
                 return (-1);
-	
+
 	if((file[fh].filePointer==file[fh].size)&&(file[fh].size % 1024 == 0)){ // means that we need to create a new block 
-		
-				// --------------------- CREATE-----------------//
-	
-		//first we start by malloc'ing a new place to store nodeId and blockId in the file variable 
-		file[fh].noOfBlocks++;
-
-		SG_Node_ID *temp_nodes; // will temply store the node IDs for the blocks of this file
-               	SG_Block_ID *temp_blocks; // will temply store the block IDs for the blocks of this file
-                SG_SeqNum *temp_blkRseq; // temply holds the remote sequende numbers of each bloc of data
-
-
-		if(file[fh].noOfBlocks==1){ // this is the first block being created
-			file[fh].nodes= (SG_Node_ID*)malloc(sizeof(SG_Node_ID));
-	        	file[fh].blocks= (SG_Block_ID*)malloc(sizeof(SG_Block_ID));
-			file[fh].blkRseq= (SG_SeqNum*)malloc(sizeof(SG_SeqNum));
-		}
-		else{
-//temp_file= (File*) realloc(file,noOfFiles*sizeof(File));
-
-			temp_nodes= (SG_Node_ID*) realloc(file[fh].nodes,file[fh].noOfBlocks*sizeof(SG_Node_ID));
-                        temp_blocks= (SG_Block_ID*) realloc(file[fh].blocks,file[fh].noOfBlocks*sizeof(SG_Block_ID));
-			temp_blkRseq= (SG_SeqNum*) realloc(file[fh].blkRseq,file[fh].noOfBlocks*sizeof(SG_SeqNum));
-
-			file[fh].nodes= temp_nodes;
-                        file[fh].blocks= temp_blocks;
-                        file[fh].blkRseq= temp_blkRseq;
-
-		}
-
-        
-
-		if(file[fh].nodes == NULL){
-                	logMessage( LOG_ERROR_LEVEL, "file[fh].nodes malloc fail" );
-        	        return( -1 );
-	        }
-		if(file[fh].blocks == NULL){
-                	logMessage( LOG_ERROR_LEVEL, "file[fh].blocks malloc fail" );
-        	        return( -1 );
-	        }
-		if(file[fh].blkRseq == NULL){
-                	logMessage( LOG_ERROR_LEVEL, "file[fh].blkRseq malloc fail" );
-        	        return( -1 );
-	        }
-
-
-
-
-//		int p,q,r;
-//        	for(p=0;p<sizeof(file[fh].nodes);p++)
-                	file[fh].nodes[file[fh].noOfBlocks-1]=0;
-
-//        	for(q=0;q<sizeof(file[fh].blocks);q++)
-                	file[fh].blocks[file[fh].noOfBlocks-1]=0;
-
-//		for(r=0;r<sizeof(file[fh].blkRseq);r++)
-                        file[fh].blkRseq[file[fh].noOfBlocks-1]=0;
-
 
         	char initPacket[SG_DATA_PACKET_SIZE], recvPacket[SG_BASE_PACKET_SIZE];
         	size_t pktlen, rpktlen;
@@ -362,14 +245,14 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
         	SG_System_OP op;
         	SG_Packet_Status ret;
 		char temp_buf [1024]; // since serialize/deserialize need a 1024 sized buffer
-		memcpy(&temp_buf[0],&buf[0],256); // copying req data to first half
+		memcpy(&temp_buf[0],&buf[0],512); // copying req data to first half
 
         	pktlen = SG_DATA_PACKET_SIZE;
         	if ( (ret = serialize_sg_packet( sgLocalNodeId, // Local ID received from initialization
                 	                    SG_NODE_UNKNOWN,   // Remote ID
                         	            SG_BLOCK_UNKNOWN,  // Block ID
                                 	    SG_CREATE_BLOCK,  // Operation to create block
-                                            sgLocalSeqno++,    // Sender sequence number
+                                            SG_SEQNO_UNKNOWN,    // Sender sequence number
                                      	    SG_SEQNO_UNKNOWN,  // Receiver sequence number
                             	//potential error
                                 	    temp_buf,               // data gotten from fn param to put inside packet
@@ -394,94 +277,10 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
     		// Unpack the recieived data
     		// assigns the node Id to the currIndex'th element of the resp array, and does the same for block ID received
     		if ( (ret = deserialize_sg_packet(&loc, &file[fh].nodes[currIndex], &file[fh].blocks[currIndex], &op, &sloc,
-                		                    &file[fh].blkRseq[currIndex], NULL, recvPacket, rpktlen)) != SG_PACKT_OK ) {
+                		                    &srem, NULL, recvPacket, rpktlen)) != SG_PACKT_OK ) {
         		logMessage( LOG_ERROR_LEVEL, "sgInitEndpoint: failed deserialization of packet [%d]", ret );
         		return( -1 );
     		   }
-	
-		
-		if(totalNodes==0)
-			memcpy(&allNodes[0],&file[fh].nodes[currIndex],sizeof(SG_Node_ID));
-			memcpy(allNodeSeq[0], &file[fh].blkRseq[currIndex],sizeof(SG_SeqNum)); 
-		else{	
-			int newNode=1;
-			int u;
-			for(u=0;u<totalNodes;u++){
-				if(file[fh].nodes[currIndex]==allNodes[u]){
-					newNode=0;	
-					allNodeSeq[u]=(file[fh].blkRseq[currIndex]>allNodeSeq[u])?file[fh].blkRseq[currIndex]:llNodeSeq[u];
-				}
-			}
-
-		}
-		
-
-		SG_Node_ID *temp_allNodes;
-		SG_SeqNum * temp_allNodeSeq;
-
-			if(newNode){
-				totalNodes++;
-				temp_allNodes=realloc(allNodes,totalNodes*sizeof(SG_Node_ID))
-				temp_allNodeSeq= realloc(allNodeSeq, totalNodes*sizeof(SG_SeqNum));
-
-				allNodes= temp_allNodes;
-		                allNodeSeq= temp_allNodeSeq;
-
-			}
-
-	
-		}
-
-	// POTENTIAL ERROR here	
-		int fileForloop;
-		int pre_ex_nodeCheck;
-		int matchCounter=0;
-		for(fileForloop=0;fileForloop<=noOfFiles-1;fileForloop++){ //-1 bc filehand;es go from 0 pwards but noOFfiles go from 1 up
-			for(pre_ex_nodeCheck=0;pre_ex_nodeCheck<file[fileForloop].noOfBlocks;pre_ex_nodeCheck++){
-				if(file[fh].nodes[currIndex]==file[fileForloop].nodes[pre_ex_nodeCheck]){ //means new block was created on pre-ex node
-										
-					matchCounter++; // its a match !!-->> nodes are the same
-					if((file[fh].blocks[currIndex]!=file[fileForloop].blocks[pre_ex_nodeCheck])
-							&&(file[fh].blkRseq[currIndex]==file[fileForloop].blkRseq[pre_ex_nodeCheck])){
-					
-						file[fh].blkRseq[currIndex]++;
-						file[fileForloop].blkRseq[pre_ex_nodeCheck]++;
-							
-					}
-					/*
-					else if((file[fh].blocks[currIndex]==file[fileForloop].blocks[pre_ex_nodeCheck])
-                                                        &&(file[fh].blkRseq[currIndex]==file[fileForloop].blkRseq[pre_ex_nodeCheck])){
-
-                                                file[fh].blkRseq[currIndex]++;
-                                                file[fileForloop].blkRseq[pre_ex_nodeCheck]++;
-
-                                        }*/
-					else if(file[fh].blkRseq[currIndex]<file[fileForloop].blkRseq[pre_ex_nodeCheck]){
-
-						//logMessage( LOG_INFO_LEVEL, "test 1 ");
-						file[fh].blkRseq[currIndex]=file[fileForloop].blkRseq[pre_ex_nodeCheck]+1;
-						file[fileForloop].blkRseq[pre_ex_nodeCheck]= file[fh].blkRseq[currIndex];
-					}
-					else if(file[fh].blkRseq[currIndex]>file[fileForloop].blkRseq[pre_ex_nodeCheck]){ // when my remseq > the one
-					       					//in for loop highlight, then we just assign my value to that one  
-						
-						//logMessage( LOG_INFO_LEVEL, "test 2 ");
-						if(matchCounter>1){ // i am greater than you but i am the best version we need 	
-							
-							//logMessage( LOG_INFO_LEVEL, "test 3 ");
-							file[fileForloop].blkRseq[pre_ex_nodeCheck]= file[fh].blkRseq[currIndex];
-						}
-						else{ // i am greater than you, and matchC=1
-
-							//logMessage( LOG_INFO_LEVEL, "test 4 ");
-							file[fh].blkRseq[currIndex]++; // increment me by 1
-							file[fileForloop].blkRseq[pre_ex_nodeCheck]= file[fh].blkRseq[currIndex]; //assign it to me+
-						}	
-
-					}	
-				}
-			}
-		}	
 
     		// Sanity check the return value
     		if ( loc != sgLocalNodeId) {   // in case the loc sent in wasnt the same as received
@@ -495,8 +294,6 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
 	}
 	else if((file[fh].filePointer==file[fh].size)&&(file[fh].size % 1024 !=0)){ // complete block at end of file
 				
- 		//---------------------COMPLETE BLK AT END OF FILE----------------------------//
-
 		int currIndex= file[fh].filePointer/1024 ; // dividing the integer file pointer by 1024 to get the index of block id 
                                                 // and node id to store
 	
@@ -517,7 +314,7 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
 		    	SG_Node_ID loc;
 		    	SG_Node_ID rem=file[fh].nodes[currIndex]; // this will store the req NODE_ID
 	            	SG_Block_ID blkid= file[fh].blocks[currIndex]; // this will store the req BLOCK_ID
-		    	SG_SeqNum sloc, srem=file[fh].blkRseq[currIndex]; // incremeneting remote node sequence here
+		    	SG_SeqNum sloc, srem;
 		    	SG_System_OP op;
 		    	SG_Packet_Status ret;
 
@@ -528,14 +325,13 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                         	        		     	   rem,   // Remote ID
                 			                    	 blkid,  // Block ID
 		                        	       SG_OBTAIN_BLOCK,  // Operation
-                                		        sgLocalSeqno++,    // Sender sequence number
-                		                      		  srem,  // Receiver sequence number
+                                		      SG_SEQNO_UNKNOWN,    // Sender sequence number
+                		                      SG_SEQNO_UNKNOWN,  // Receiver sequence number
 		                                      NULL, initPacket, &pktlen)) != SG_PACKT_OK ) {
 		        	logMessage( LOG_ERROR_LEVEL, "sgObtainBlock: failed serialization of packet [%d].", ret );
 		        	return( -1 );
 		    	}
-			
-				logMessage( LOG_INFO_LEVEL, "test 4 ");
+
 			// Send the packet
 		    	rpktlen = SG_DATA_PACKET_SIZE;
 		    	if ( sgServicePost(initPacket, &pktlen, recvPacket, &rpktlen) ) {
@@ -551,19 +347,10 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
     			}
 
     			// Sanity check the return value
-
-			
     			if ( loc == SG_NODE_UNKNOWN ) {
         			logMessage( LOG_ERROR_LEVEL, "sgObtainBlock: bad local ID returned [%ul]", loc );
         			return( -1 );
 	    		}
-			
-			if(srem != (file[fh].blkRseq[currIndex])){ // comparing waht we have to what we got from post
-				logMessage( LOG_ERROR_LEVEL, "sgObtainBlock:bad remote seuqnce returend [%ul]", loc );
-                                return( -1 );
-			}
-			else
-				file[fh].blkRseq[currIndex]=srem+1; // so the new rem seq number of  block has been updated by one
 			//Update Cache 
         	        //putSGDataBlock(file[fh].nodes[currIndex],file[fh].blocks[currIndex], obtain_buf);
          	}
@@ -574,7 +361,7 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
 
 
 		// origninal block obtained in obtain_buf
-		// Now need to modify the ending block and apend data of 256 bits to it
+		// Now need to modify it's second half
 		
 
 			// Local variables
@@ -583,27 +370,15 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                     SG_Node_ID loc;
                     SG_Node_ID rem=file[fh].nodes[currIndex]; // this will store the req NODE_ID
                     SG_Block_ID blkid= file[fh].blocks[currIndex]; // this will store the req BLOCK_ID
-                    SG_SeqNum sloc, srem=file[fh].blkRseq[currIndex]; // incrementing remote node sequnce here
+                    SG_SeqNum sloc, srem;
                     SG_System_OP op;
                     SG_Packet_Status ret;
 
 		    //size_t pktlen, rpktlen;
 		    char update_buf[1024];
-			
-		    // creating ubdate_buf
 
-		    if(file[fh].filePointer%1024 == 256){ //pointer at end of first quarter
-	    		 memcpy(&update_buf[0],&obtain_buf[0],256); // copying original data into first qurater of update)buf
-  	                 memcpy(&update_buf[256],&buf[0],256); // copying new data into second quarter of update_buf
-		    }
-		    else if(file[fh].filePointer%1024 == 512){ // pointer at half of curBlock
-		   	 memcpy(&update_buf[0],&obtain_buf[0],512); // copying original data into first half of update)buf
-                         memcpy(&update_buf[512],&buf[0],256); // copying new data into second half of update_buf 
-		    }
-       		    else if(file[fh].filePointer%1024 == 768){ // pointer at end of third quarter of curBlock
-			 memcpy(&update_buf[0],&obtain_buf[0],768); // copying original data into first 3/4 th of update)buf
-                         memcpy(&update_buf[768],&buf[0],256); // copying new data into last quarter of update_buf
-		    }
+		   memcpy(&update_buf[0],&obtain_buf[0],512); // copying original data into first half of update)buf
+		   memcpy(&update_buf[512],&buf[0],512); // copying new data into second half of update_buf 
 
 
 
@@ -613,8 +388,8 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                                 		    rem,   // Remote ID
                 		                    blkid,  // Block ID
 		                                    SG_UPDATE_BLOCK,  // Operation
-                                		    sgLocalSeqno++,    // Sender sequence number
-                		                    srem,  // Receiver sequence number
+                                		    SG_SEQNO_UNKNOWN,    // Sender sequence number
+                		                    SG_SEQNO_UNKNOWN,  // Receiver sequence number
 		                                    update_buf, // final full data block being sent to originial block position
 						    initPacket_1, &pktlen)) != SG_PACKT_OK ) {
 		        logMessage( LOG_ERROR_LEVEL, "sgUpdateBlock: failed serialization of packet [%d].", ret );
@@ -640,15 +415,7 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
     		if ( loc == SG_NODE_UNKNOWN ) {
         		logMessage( LOG_ERROR_LEVEL, "sgUpdateBlock: bad local ID returned [%ul]", loc );
         		return( -1 );
-	        }
-
-		if(srem != (file[fh].blkRseq[currIndex])){ // comparing waht we have to what we got from post
-                                logMessage( LOG_ERROR_LEVEL, "sgObtainBlock: bad remote node sequnce returned [%ul]", loc );
-                                return( -1 );
-                }
-                else
-                      file[fh].blkRseq[currIndex]=srem+1; // so the new rem seq number of  block has been updated by one
-
+	           }
 
 		
 		//Update Cache
@@ -661,10 +428,7 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
 
 	}
 	else if(file[fh].filePointer<file[fh].size){ // we are supposed to update a pre-existing block
-		
-		//------------------------------- MOD PRE_EXisting BLK------------------------//
-
-
+	
 		int currIndex= file[fh].filePointer/1024 ; // dividing the integer file pointer by 1024 to get the index of block id 
                                                 // and node id to store
 
@@ -684,7 +448,7 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                     	SG_Node_ID loc;
                     	SG_Node_ID rem=file[fh].nodes[currIndex]; // this will store the req NODE_ID
                     	SG_Block_ID blkid= file[fh].blocks[currIndex]; // this will store the req BLOCK_ID
-                    	SG_SeqNum sloc, srem= file[fh].blkRseq[currIndex] ; // incrementein remote node sequence her
+                    	SG_SeqNum sloc, srem;
                     	SG_System_OP op;
                     	SG_Packet_Status ret;
 
@@ -694,12 +458,12 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                         	                                   rem,   // Remote ID
                                                      		 blkid,  // Block ID
                                                        SG_OBTAIN_BLOCK,  // Operation
-                                                        sgLocalSeqno++,    // Sender sequence number
-                                                      		  srem,  // Receiver sequence number
+                                                      SG_SEQNO_UNKNOWN,    // Sender sequence number
+                                                      SG_SEQNO_UNKNOWN,  // Receiver sequence number
                                                       NULL, initPacket, &pktlen)) != SG_PACKT_OK ) {
                         	logMessage( LOG_ERROR_LEVEL, "sgObtainBlock: failed serialization of packet [%d].", ret );
                         	return( -1 );
-                    	}
+                    	   }
 
 			// Send the packet
                     	rpktlen = SG_DATA_PACKET_SIZE;
@@ -720,14 +484,7 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                         	logMessage( LOG_ERROR_LEVEL, "sgObtainBlock: bad local ID returned [%ul]", loc );
                         	return( -1 );
                 	}
-
- 			if(srem != (file[fh].blkRseq[currIndex])){ // comparing waht we have to what we got from post
-                        	logMessage( LOG_ERROR_LEVEL, "sgObtainBlock: bad remote sequnce returned [%ul]", loc );
-                               	return( -1 );
-                        }
-                        else
-                                file[fh].blkRseq[currIndex]=srem+1; // so the new rem seq number of  block has been updated by one
-	
+ 	
 		     //Update Cache 
                       // putSGDataBlock(file[fh].nodes[currIndex],file[fh].blocks[currIndex], obtain_buf);
                 }
@@ -741,26 +498,14 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
 
 
 	      // in both foll cases, we preserve the other untocuched half of the block and resend it back with new half			
-		if((file[fh].filePointer % 1024)==0){ // we are at beginning of block -->> plain update of 1st quarter of block
-			memcpy(&update_buf[0],&buf[0],256); // updating new data in 1st quarter
-			memcpy(&update_buf[256],&obtain_buf[256],768);	// preserving rest 3/4 th	
+		if((file[fh].filePointer % 1024)==0){ // we are at beginning of block -->> plain update of 1st half of block
+			memcpy(&update_buf[0],&buf[0],512); // updating new data in 1st half
+			memcpy(&update_buf[512],&obtain_buf[512],512);	// preserving other hlf	(2nd one)	
 				
-		}
-		else if((file[fh].filePointer % 1024)==256){ // we are at end of first quarter -->>  update 2nd quarter of block
-			memcpy(&update_buf[0],&obtain_buf[0],256); // preserving 1st quart
-		        memcpy(&update_buf[256],&buf[0],256); // update 2nd quarter of block
-			memcpy(&update_buf[512],&obtain_buf[512],512); // preserve rest (2nd half of block)			
-
-	
 		}
 		else if((file[fh].filePointer % 1024)==512){ // we are at half point of block -->> update 2nd half of currBlock	
 			 memcpy(&update_buf[0],&obtain_buf[0],512); // preserving 1st half 
-		 	 memcpy(&update_buf[512],&buf[0],256); //updating new data in 3rd quart
-	 		 memcpy(&update_buf[768],&obtain_buf[768],256);	// preserv last quarter of block	 
-		}
-		else if((file[fh].filePointer % 1024)==768){ // we are at end of 3rd quarter of block ->> update last quarter of currBlock 
-			memcpy(&update_buf[0],&obtain_buf[0],768); // preserving 1st 3/4 th of the block
-		 	memcpy(&update_buf[768],&buf[0],256); // updating the last quarter of the blovk
+		 	 memcpy(&update_buf[512],&buf[0],512); //updating new data in 2nd half	 	
 		}
 		
 	      // Now updating the Block 
@@ -771,7 +516,7 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                     SG_Node_ID loc;
                     SG_Node_ID rem=file[fh].nodes[currIndex]; // this will store the req NODE_ID
                     SG_Block_ID blkid= file[fh].blocks[currIndex]; // this will store the req BLOCK_ID
-                    SG_SeqNum sloc, srem= file[fh].blkRseq[currIndex]; // incrementing remote node sequnce here
+                    SG_SeqNum sloc, srem;
                     SG_System_OP op;
                     SG_Packet_Status ret;
 
@@ -781,8 +526,8 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                                                     rem,   // Remote ID
                                                     blkid,  // Block ID
                                                     SG_UPDATE_BLOCK,  // Operation
-                                                    sgLocalSeqno++,    // Sender sequence number
-                                                    srem,  // Receiver sequence number
+                                                    SG_SEQNO_UNKNOWN,    // Sender sequence number
+                                                    SG_SEQNO_UNKNOWN,  // Receiver sequence number
                                                     update_buf, // final full data block being sent to originial block position
                                                     initPacket_1, &pktlen)) != SG_PACKT_OK ) {
                         logMessage( LOG_ERROR_LEVEL, "sgUpdateBlock: failed serialization of packet [%d].", ret );
@@ -809,14 +554,6 @@ int sgwrite(SgFHandle fh, char *buf, size_t len) {
                         return( -1 );
                 }
 		
-		if(srem != (file[fh].blkRseq[currIndex])){ // comparing waht we have to what we got from post
-                        logMessage( LOG_ERROR_LEVEL, "sgObtainBlock: bad remote sequence returned [%ul]", loc );
-                        return( -1 );
-                }
-                else
-                        file[fh].blkRseq[currIndex]=srem+1; // so the new rem seq number of  block has been updated by one
-	
-
 		//Update Cache
                   putSGDataBlock(file[fh].nodes[currIndex],file[fh].blocks[currIndex], update_buf);
 
@@ -845,8 +582,7 @@ int sgseek(SgFHandle fh, size_t off) {
 
 
                                                                 //  if location is beyond file, or
-        if((file[fh].size<off)||(fh<0)||(fh>=noOfFiles)||(file[fh].isOpen==0)) //>= noOfFiles bc fh goes from 0 to upwards,BUT noFiles goes from 1 up
-										// incase file handle is bad or file is actually closed
+        if((file[fh].size<off)||(fh<0)||(fh>=21)||(file[fh].isOpen==0)) // incase file handle is bad or file is actually closed
                 return (-1);
 
         file[fh].filePointer= off;
@@ -866,8 +602,7 @@ int sgseek(SgFHandle fh, size_t off) {
 int sgclose(SgFHandle fh) {
 	 fh--; // so that if want to access fh=1, will use file[fh=0]'th file as that is how the array works
 
-        if((fh<0)||(fh>=noOfFiles)||(file[fh].isOpen==0))//>= noOfFiles bc fh goes from 0 to upwards whereas noFiles goes from 1 to up 
-							// incase file handle is bad or file is actually closed
+        if((fh<0)||(fh>=21)||(file[fh].isOpen==0)) // incase file handle is bad or file is actually closed
                 return (-1);
 
 
@@ -888,18 +623,10 @@ int sgclose(SgFHandle fh) {
 
 int sgshutdown(void) {
         
-	int i;
-  	for(i=0;i<=noOfFiles-1;i++){ // as file indexes only go from 0 to upwards, whereas noOfFiles goes from 1 to uowards
-  		free(file[i].nodes);
-  		free(file[i].blocks);
-		free(file[i].blkRseq);
-	}
-
-	//above three free'd before file is free'd
-	free(file);
 	fileHandleCounter=0;
 //	closeSGCache();
-
+//      for(int i=0;i<20;i++)
+//              file[i]=NULL;
 
 // shutting down system 
         // Local variables
