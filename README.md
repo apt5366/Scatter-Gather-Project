@@ -22,6 +22,8 @@ The application both sends and ereceives packets. Upon receiving the application
 
 The cache implemented is an LRU (least recentl used) cache which works together with the scatter-gather drive.
 
+The functionality and implementation can be found in the "sg_driver.c" and "sg_cache.c" files.  
+
 To run this file please type
 
 > make
