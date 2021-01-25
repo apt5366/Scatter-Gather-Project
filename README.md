@@ -21,3 +21,8 @@ Each file is broken down into nodes. These nodes are scattered thorughout the sy
 The application both sends and ereceives packets. Upon receiving the application also validates the packet's structure to know what data has been passed.
 
 The cache implemented is an LRU (least recentl used) cache which works together with the scatter-gather drive.
+
+To run this file please type
+
+> make
+> ./sg_sim -v cmpsc311-assign4-workload.txt
