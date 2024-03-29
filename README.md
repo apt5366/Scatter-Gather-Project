@@ -1,4 +1,14 @@
 # Scatter-Gather-Project
+•	Developed a virtual file management system integrated with a cache for efficient packet recovery.
+•	Implemented a peer-to-peer system utilizing external hosts, referred to as Nodes, to store local filesystem data.
+•	Created the ScatterGather service, simulating online storage systems like OneDrive or Box, with a protocol for communication via network messages.
+•	Introduced a packet-based approach where each file is fragmented into nodes and dispersed across the system.
+•	Implemented packet verification mechanisms using Sender Node ID, Block ID, receiver sequence number, and random generation for enhanced data integrity.
+•	Established a robust virtual file management system capable of efficient data storage and retrieval.
+•	Integrated an LRU (least-recently-used) caching mechanism to expedite packet recovery processes, ensuring optimal system performance.
+•	Facilitated secure data transmission and storage through packet verification protocols, enhancing overall system reliability.
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 A virtual file managing system working along-side a cache to manage quick recovery of packets
 
 This is a project created for my Systems Programming course at Penn State. 
