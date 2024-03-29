@@ -7,9 +7,7 @@
 •	Established a robust virtual file management system capable of efficient data storage and retrieval.
 •	Integrated an LRU (least-recently-used) caching mechanism to expedite packet recovery processes, ensuring optimal system performance.
 •	Facilitated secure data transmission and storage through packet verification protocols, enhancing overall system reliability.
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-A virtual file managing system working along-side a cache to manage quick recovery of packets
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------A virtual file managing system working along-side a cache to manage quick recovery of packets
 
 This is a project created for my Systems Programming course at Penn State. 
 
